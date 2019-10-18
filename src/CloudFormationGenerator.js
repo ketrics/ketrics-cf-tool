@@ -4,6 +4,7 @@ const { exec } = require('child_process');
 const archiver = require('archiver');
 const AWS = require('aws-sdk');
 const flatten = require('flat');
+const util = require('util')
 
 // Custom Resources Handlers
 const {Cognito} = require('./Cognito.class');
@@ -213,11 +214,14 @@ module.exports.CloudFormationGenerator = class {
                 stackName: response.StackName,
                 stackId: response.StackId,
                 description: response.Description,
-                outputs: response.Outputs,
+                outputs: response.Outputs.reduce((obj, output)=>{
+                    obj[output.OutputKey] = output.OutputValue;
+                    return obj;
+                }, {}),
                 stackStatus: response.StackStatus
             };
             console.log(stackInfo);
-            this.updateGlobalParameters(stackInfo);
+            this.updateProjectStackParameters(stackInfo);
             
             return data;
         }catch(err){
@@ -226,21 +230,21 @@ module.exports.CloudFormationGenerator = class {
         }
     }
 
-    updateGlobalParameters(stackInfo){
+    updateProjectStackParameters(newStackInfo){
         let projectParameters = this.loadJsonFile(this.projectParametersFilename);
         projectParameters.stacks = projectParameters.stacks || {};
-        if(stackInfo){
-            const newOutputs = stackInfo.outputs.reduce((obj, output)=>{
-                obj[output.OutputKey] = output.OutputValue;
-                return obj;
-            }, {});
-            stackInfo.outputs = newOutputs;
-            projectParameters.stacks[this.stackName] = stackInfo;
+        let currentStackInfo = projectParameters.stacks[this.stackName] || {};
+        if(newStackInfo){
+            projectParameters.stacks[this.stackName] = {
+                ...currentStackInfo,
+                ...newStackInfo
+            };
         }else{
             delete projectParameters.stacks[this.stackName];
         }
 
         fs.writeFileSync(this.projectParametersFilename, JSON.stringify(projectParameters, null, 4));
+        return projectParameters;
     }
 
     async deleteStack(stack){
@@ -262,7 +266,7 @@ module.exports.CloudFormationGenerator = class {
         }else{
             console.log(`The stack ${this.stackName} doesn't exist`);
         }
-        this.updateGlobalParameters(null);
+        this.updateProjectStackParameters(null);
     }
 
     loadArgs(){
@@ -309,9 +313,10 @@ module.exports.CloudFormationGenerator = class {
             AWS.config.update({region: AwsRegion});
             
             if(script==="build"){
+                console.log(util.inspect(this.parameters, {showHidden: false, depth: null}));
                 await this.processStack();
             }if(script==="test"){
-                console.log({cmd, script, args, argvs, parameters: this.parameters});
+                console.log(util.inspect({cmd, script, args, argvs, parameters: this.parameters}, {showHidden: false, depth: null}));
             }if(script==="describe"){
                 this.getStack();
             }else {
@@ -426,8 +431,8 @@ module.exports.CloudFormationGenerator = class {
     }
 
     loadStackParameters(){
-        const projectParameters = this.loadJsonFile(this.projectParametersFilename);
         const stackParameters = this.loadJsonFile(`./stacks/${this.stackName}/parameters.json`);
+        const projectParameters = this.updateProjectStackParameters({parameters: stackParameters});
 
         this.parameters = {
             ...projectParameters,
