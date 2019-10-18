@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: AppSync CloudFormation template
+
+Resources:
+  GraphQLApi:
+    Type: AWS::AppSync::GraphQLApi
+    Properties:
+      Name: "${stackName}-${graphQlApiName}"
+      AuthenticationType: "AMAZON_COGNITO_USER_POOLS"
+      UserPoolConfig:
+        UserPoolId: "${userPoolId}"
+        AwsRegion: "${AwsRegion}"
+        DefaultAction: "ALLOW"
+
+  GraphQLSchema:
+      Type: AWS::AppSync::GraphQLSchema
+      Properties:
+        ApiId: !GetAtt [GraphQLApi, ApiId]
+        Definition: "${file(./stacks/${stackName}/schema.graphql)}"
+
+
+Outputs:
+  GraphQLApiUrl:
+    Description: GraphQLApi URL
+    Value: !GetAtt [ GraphQLApi, GraphQLUrl ]

@@ -1,0 +1,22 @@
+type ToDo{
+    id: ID!
+    title: String
+}
+
+input ToDoCreateInput{
+    title: String!
+}
+
+type Query{
+    getToDo(id:ID!): ToDo
+}
+
+type Mutation{
+    createToDo(input: ToDoCreateInput!): ToDo
+    @aws_auth(cognito_groups: ["Admin"])
+}
+
+schema{
+    query: Query
+    mutation: Mutation
+}

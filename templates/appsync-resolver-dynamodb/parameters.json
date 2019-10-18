@@ -1,0 +1,6 @@
+{
+    "tableName": "ToDo",
+    "graphQLApiId": "",
+    "getItemFieldName": "getToDo",
+    "createItemFieldName": "createToDo"
+}

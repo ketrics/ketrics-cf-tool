@@ -1,0 +1,7 @@
+{
+    "operation" : "PutItem",
+    "key" : {
+        "id": $util.dynamodb.toDynamoDBJson($util.autoId()),
+    },
+    "attributeValues" : $util.dynamodb.toMapValuesJson($ctx.args.input)
+}

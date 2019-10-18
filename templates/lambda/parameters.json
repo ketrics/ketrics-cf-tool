@@ -1,0 +1,8 @@
+{
+    "stackType": "AWS_LAMBDA",
+    "functionName": "helloWorld",
+    "memorySize": 128,
+    "timeout": 10,
+    "runtime": "nodejs10.x",
+    "deploymentBucketKey": "HelloWorld/helloWorld.zip"
+}

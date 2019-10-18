@@ -1,0 +1,15 @@
+{
+  "name": "ketrics-cf",
+  "version": "1.0.0",
+  "description": "Ketrics Tool to create AWS projects using CloudFormation",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Cristián Bustamante",
+  "license": "ISC",
+  "dependencies": {
+    "archiver": "^3.1.1",
+    "aws-sdk": "^2.552.0"
+  }
+}

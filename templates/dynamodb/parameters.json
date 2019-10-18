@@ -1,0 +1,4 @@
+{
+    "stackType": "AWS_DYNAMODB",
+    "tableName": "ToDos"
+}
