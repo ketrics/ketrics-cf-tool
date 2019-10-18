@@ -1,0 +1,13 @@
+{
+    "passwordPolicy":{
+        "minimumLength": 8,
+        "requireLowercase": true,
+        "requireNumbers": true,
+        "requireSymbols": false,
+        "requireUppercase": true
+    },
+    "lambdaConfig": {
+        "postConfirmationLambdaArn": "Hello",
+        "preTokenGenerationLambdaArn": null
+    }
+}

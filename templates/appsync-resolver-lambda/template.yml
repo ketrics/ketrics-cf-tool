@@ -55,8 +55,8 @@ Resources:
                 Action:
                   - dynamodb:*
                 Resource:
-                  - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ToDosTableName}
-                  - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ToDosTableName}/*
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ToDosTableName}"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ToDosTableName}/*"
 
   ####################################################################################
 

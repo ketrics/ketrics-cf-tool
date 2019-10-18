@@ -30,13 +30,11 @@ Resources:
               - Effect: Allow
                 Action:
                   - logs:CreateLogStream
-                Resource:
-                  - Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${stackName}-${functionName}*:*
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${stackName}-${functionName}*:*"
               - Effect: Allow
                 Action:
                   - logs:PutLogEvents
-                Resource:
-                  - Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${stackName}-${functionName}*:*:*
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${stackName}-${functionName}*:*:*"
       
   LambdaFunction:
     Type: AWS::Lambda::Function
@@ -56,3 +54,7 @@ Resources:
     DependsOn:
       - LogGroup
       - IamRoleLambdaExecution
+
+Outputs:  
+  LambdaFunctionArn:
+    Value: !GetAtt [LambdaFunction, Arn]
