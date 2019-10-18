@@ -12,6 +12,22 @@ module.exports.CloudFormationGenerator = class {
         this.templatePath = templatePath;
     }
 
+    get stackTemplateFilename(){
+        return path.join('./build', `${this.stackName}.yml`);
+    }
+
+    get stackTemplateBucketKey(){
+        return `${this.stackName}/${this.stackName}.yml`;
+    }
+
+    get lambdaCodeFilename(){
+        return `./build/${this.stackName}.zip`;
+    }
+
+    get lambdaCodeBucketKey(){
+        return `${this.stackName}/${this.parameters.functionName}.zip`;
+    }
+
     loadJsonFile(filename){
         try{
             return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -81,21 +97,44 @@ module.exports.CloudFormationGenerator = class {
         }
     }
 
-    async uploadToDeploymentBucket(){
-        const {projectDeploymentBucketName, deploymentBucketKey} = this.parameters;
+    async uploadFileToDeploymentBucket({bucketKey, filename}){
+        const {projectDeploymentBucketName} = this.parameters;
         try{
-            const fileContent = fs.readFileSync(this.zipFilename);
+            const fileContent = fs.readFileSync(filename);
             
             // call S3 to retrieve upload file to specified bucket
             const s3 = new AWS.S3({apiVersion: '2006-03-01'});
             const params = {
                 Bucket: projectDeploymentBucketName,
                 Body: fileContent,
-                Key: deploymentBucketKey
+                Key: bucketKey
             };
             const data = await s3.upload(params).promise();
             console.log("File uploaded:");
             console.log(data);
+        }catch(err){
+            throw err;
+        }
+    }
+
+    async uploadLambdaToDeploymentBucket(){
+        try{
+            await this.uploadFileToDeploymentBucket({
+                filename: this.lambdaCodeFilename,
+                bucketKey: this.lambdaCodeBucketKey
+            })
+        }catch(err){
+            console.log(err);
+            throw err;
+        }
+    }
+
+    async uploadStackTemplateToDeploymentBucket(){
+        try{
+            await this.uploadFileToDeploymentBucket({
+                filename: this.stackTemplateFilename,
+                bucketKey: this.stackTemplateBucketKey
+            })
         }catch(err){
             console.log(err);
             throw err;
@@ -104,7 +143,6 @@ module.exports.CloudFormationGenerator = class {
 
     async getStack(){
         try{
-            const {stackName} = this.parameters;
             const cloudformation = new AWS.CloudFormation();
             const params = {
                 StackStatusFilter: [
@@ -113,7 +151,7 @@ module.exports.CloudFormationGenerator = class {
                   ]
             }
             const {StackSummaries} = await cloudformation.listStacks(params).promise();
-            const stack = StackSummaries.find(stack=>stack.StackName===stackName);
+            const stack = StackSummaries.find(stack=>stack.StackName===this.stackName);
             return stack;
         }catch(err){
             console.log(err);
@@ -159,8 +197,8 @@ module.exports.CloudFormationGenerator = class {
 
         if(cmd==='run'){
             let awsCmd;
-            const {stackName} = args;
-            this.loadStackParameters(stackName);
+            this.stackName = args.stackName;
+            this.loadStackParameters();
             
             if(script==="build"){
                 await this.processStack();
@@ -168,41 +206,47 @@ module.exports.CloudFormationGenerator = class {
                 console.log({cmd, script, args, argvs});
             }else {
                 const {AwsRegion, stackType} = this.parameters;
+                
                 // Set the region
                 AWS.config.update({region: AwsRegion});
+
                 // Gets the Stack if it is already deployed
                 const stack = await this.getStack();
+
                 if(script==="deploy"){
                     // Creates Project Bucket to upload Stacks files
                     await this.createProjectDeploymentBucket();
+
                     // Create the Stack template replacing the parameters and files
                     await this.processStack();
 
-                    if(stackType==="AWS_LAMBDA"){
-                        // Upload Lambda code to Project Bucket
-                        await this.uploadToDeploymentBucket();
-                    }
+                    // Upload Stack template to Project Bucket
+                    await this.uploadStackTemplateToDeploymentBucket();
+
+                    // Upload Lambda code to Project Bucket
+                    if(stackType==="AWS_LAMBDA")
+                        await this.uploadLambdaToDeploymentBucket();
                     
                     if(stack){
-                        console.log(`Updating stack ${stackName}`);
-                        awsCmd = `aws cloudformation update-stack --stack-name ${stackName} --template-body file://$PWD/build/${stackName}.yml  --capabilities CAPABILITY_IAM --capabilities CAPABILITY_NAMED_IAM`;
+                        console.log(`Updating stack ${this.stackName}`);
+                        awsCmd = `aws cloudformation update-stack --stack-name ${this.stackName} --template-body file://$PWD/build/${this.stackName}.yml  --capabilities CAPABILITY_IAM --capabilities CAPABILITY_NAMED_IAM`;
                         this.runCmd(awsCmd);
                     }else{
-                        console.log(`Creating stack ${stackName}`);
-                        awsCmd = `aws cloudformation create-stack --stack-name ${stackName} --template-body file://$PWD/build/${stackName}.yml  --capabilities CAPABILITY_IAM --capabilities CAPABILITY_NAMED_IAM`;
+                        console.log(`Creating stack ${this.stackName}`);
+                        awsCmd = `aws cloudformation create-stack --stack-name ${this.stackName} --template-body file://$PWD/build/${this.stackName}.yml  --capabilities CAPABILITY_IAM --capabilities CAPABILITY_NAMED_IAM`;
                         this.runCmd(awsCmd);
                     }
                 }else if(script==="remove"){
                     if(stack){
-                        awsCmd = `aws cloudformation delete-stack --stack-name ${stackName} `;
+                        awsCmd = `aws cloudformation delete-stack --stack-name ${this.stackName} `;
                         this.runCmd(awsCmd);
                     }else{
-                        console.log(`The stack ${stackName} doens't exist`);
+                        console.log(`The stack ${this.stackName} doens't exist`);
                     }
                 }else if(script==="create"){
                     const {template} = args;
                     if(stack){
-                        console.log(`Stack ${stackName} already exist`);
+                        console.log(`Stack ${this.stackName} already exist`);
                     }else{
                         this.createStackFromTemplate(template);
                     }
@@ -212,15 +256,14 @@ module.exports.CloudFormationGenerator = class {
     }
 
     createStackFromTemplate(template){
-        const {stackName} = this.parameters;
-        if(stackName && template){
+        if(this.stackName && template){
             const source = `${this.templatePath}/${template}`;
-            const target = `./stacks/${stackName}`;
+            const target = `./stacks/${this.stackName}`;
     
             if ( fs.existsSync( target ) ) {
-                console.log(`There is already a Stack named: ${stackName}`);
+                console.log(`There is already a Stack named: ${this.stackName}`);
             }else{
-                console.log(`Creating Stack: ${stackName} from template ${template}`);
+                console.log(`Creating Stack: ${this.stackName} from template ${template}`);
                 this.copyFolderRecursiveSync(source, target);
             }
         }else{
@@ -267,15 +310,13 @@ module.exports.CloudFormationGenerator = class {
 
     createLambdaZip(){
         return new Promise((resolve, reject) => {
-            const {stackName} = this.parameters;
-            const zipFilename = path.join(process.cwd(), `./build/${stackName}.zip`);
-            const output = fs.createWriteStream(zipFilename);
+            const output = fs.createWriteStream(this.lambdaCodeFilename);
             const archive = archiver('zip');
 
             output.on('close', function () {
                 console.log(archive.pointer() + ' total bytes');
-                console.log(`Zip file created: ${zipFilename}`);
-                resolve(zipFilename);
+                console.log(`Zip file created: ${this.lambdaCodeFilename}`);
+                resolve(this.lambdaCodeFilename);
             });
             
             archive.on('error', function(err){
@@ -283,40 +324,38 @@ module.exports.CloudFormationGenerator = class {
             });
             
             archive.pipe(output);
-            archive.directory(`./stacks/${stackName}`, false);
+            archive.directory(`./stacks/${this.stackName}`, false);
             archive.finalize();
         });
     }
 
-    loadStackParameters(stackName){
-        const globalParameters = this.loadJsonFile('./parameters.json');
-        const stackParametersFilename = `./stacks/${stackName}/parameters.json`;
-        const stackParameters = this.loadJsonFile(stackParametersFilename);
-        const projectDeploymentBucketName = `${globalParameters.projectName.toLowerCase()}-deploymentbucket`;
+    loadStackParameters(){
+        const globalParameters = this.loadJsonFile('./stacks/parameters.json');
+        const stackParameters = this.loadJsonFile(`./stacks/${this.stackName}/parameters.json`);
 
         this.parameters = {
             ...globalParameters,
             ...stackParameters,
-            stackName,
-            projectDeploymentBucketName
+            stackName: this.stackName,
+            projectDeploymentBucketName: `${globalParameters.projectName.toLowerCase()}-deploymentbucket`
         }
+        // This parameter requires functionName parameter to be loaded
+        this.parameters.lambdaCodeBucketKey = this.lambdaCodeBucketKey;
     }
 
     async processStack(template="template.yml"){   
-        const {stackName, stackType} = this.parameters;     
-        const tplFilename = `./stacks/${stackName}/${template}`;
+        const {stackType} = this.parameters;     
+        const tplFilename = `./stacks/${this.stackName}/${template}`;
         let templateContent = fs.readFileSync(tplFilename, 'utf8');
         templateContent = this.replaceFiles(templateContent);
         templateContent = this.replaceParameters(templateContent);
-        this.createOutput(templateContent, path.join('./build', `${stackName}.yml`));
+        this.createOutput(templateContent, this.stackTemplateFilename);
 
         // If the Stack is an AWS_LAMBDA then zip the files and upload it to the Project Bucket
         if(stackType==="AWS_LAMBDA"){
             // Create Zip file with Lambda code
-            this.zipFilename = await this.createLambdaZip(stackName);
+            await this.createLambdaZip();
         }
-
-        return tplFilename;
     }
 
     createOutput(template, output){

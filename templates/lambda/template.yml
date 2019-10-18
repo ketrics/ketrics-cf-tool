@@ -42,8 +42,8 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Code:
-        S3Bucket: ${projectDeploymentBucketName}
-        S3Key: ${deploymentBucketKey}
+        S3Bucket: "${projectDeploymentBucketName}"
+        S3Key: "${lambdaCodeBucketKey}"
       FunctionName: "${functionName}"
       Handler: handler.${functionName}
       MemorySize: ${memorySize}
