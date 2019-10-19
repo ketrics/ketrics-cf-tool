@@ -1,4 +1,5 @@
 {
+    "stackType": "AWS_COGNITO",
     "passwordPolicy":{
         "minimumLength": 8,
         "requireLowercase": true,

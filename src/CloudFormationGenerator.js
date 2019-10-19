@@ -22,15 +22,6 @@ module.exports.CloudFormationGenerator = class {
         this.projectParametersFilename = projectParametersFilename || defaults.projectParametersFilename;
     }
 
-    loadJsonFile(filename){
-        try{
-            return JSON.parse(fs.readFileSync(filename, 'utf8'));
-        }catch(err){
-            console.log(`${filename} does not exist!`);
-            return {};
-        }
-    }
-
     runCmd(cmd){
         console.log(`cmd: ${cmd}`);
         exec(cmd, (err, stdout, stderr) => {
@@ -343,8 +334,10 @@ module.exports.CloudFormationGenerator = class {
                     const {template} = args;
                     if(stack){
                         console.log(`Stack ${this.stackName} already exist`);
-                    }else{
+                    }else if(template){
                         this.createStackFromTemplate(template);
+                    }else{
+                        console.log(`Please provide a valid template`)
                     }
                 }else{
                     console.log(`Unhandled script ${script}`);
@@ -428,11 +421,24 @@ module.exports.CloudFormationGenerator = class {
         });
     }
 
+    loadJsonFile(filename, variables={}){
+        try{
+            let fileContent = fs.readFileSync(filename, 'utf8');
+            fileContent = this.replaceVariables(fileContent, variables)
+            return JSON.parse(fileContent);
+        }catch(err){
+            console.log(`${filename} does not exist!`);
+            return {};
+        }
+    }
+
     loadStackParameters(stackFolder){
         this.stackFolder = stackFolder;
-
-        const stackParameters = this.loadJsonFile(`./stacks/${stackFolder}/parameters.json`);
-        const projectParameters = this.updateProjectStackParameters({parameters: stackParameters});
+        // Load Project Parameters to replace into Stack Parameters before loading them
+        let projectParameters = this.loadJsonFile(this.projectParametersFilename);
+        const stackParameters = this.loadJsonFile(`./stacks/${stackFolder}/parameters.json`, projectParameters);
+        
+        projectParameters = this.updateProjectStackParameters({parameters: stackParameters});
         this.stackName = `${projectParameters.projectName}-${stackFolder}`;
         
         this.parameters = {
@@ -460,7 +466,7 @@ module.exports.CloudFormationGenerator = class {
         console.log("Processing Stack Template file:", {filename: tplFilename});
         let templateContent = fs.readFileSync(tplFilename, 'utf8');
         templateContent = this.replaceFiles(templateContent);
-        templateContent = this.replaceParameters(templateContent);
+        templateContent = this.replaceVariables(templateContent, this.parameters);
         
         // Create Stack Template Output
         fs.writeFileSync(this.parameters.stackTemplateFilename, templateContent);
@@ -473,10 +479,10 @@ module.exports.CloudFormationGenerator = class {
         }
     }
 
-    replaceParameters(template){
+    replaceVariables(template, variables){
         const variableSyntax = RegExp(/\${(.*?)}/g);
-        const flattenParameters = flatten(this.parameters);
-        const configVariables = Object.keys(flattenParameters);
+        const flattenVariables = flatten(variables);
+        const configVariables = Object.keys(flattenVariables);
         const templateVariables = [];
         let searchResult;
         // eslint-disable-next-line no-cond-assign
@@ -488,12 +494,12 @@ module.exports.CloudFormationGenerator = class {
             .filter(value => templateVariables.indexOf(value) > -1)
             .filter((value, index, array) => array.indexOf(value) === index)
             .reduce(
-                (accum, value) => Object.assign(accum, { [value]: flattenParameters[value] }),
+                (accum, value) => Object.assign(accum, { [value]: flattenVariables[value] }),
                 {},
             );
 
-        let variables = Object.keys(substitutions).join('|');
-        let regex = new RegExp("\\${(" + variables + ")}", "g");
+        let variablesKeys = Object.keys(substitutions).join('|');
+        let regex = new RegExp("\\${(" + variablesKeys + ")}", "g");
         template = template.replace(regex, "|||$1|||");
 
         let templateJoin = template.split('|||');

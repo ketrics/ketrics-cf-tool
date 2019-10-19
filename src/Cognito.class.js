@@ -5,10 +5,10 @@ module.exports.Cognito = class {
 
         if(lambdaConfig){
             parameters.lambdaConfigPostConfirmation = lambdaConfig.postConfirmationLambdaArn ? 
-            `PostConfirmation: ${lambdaConfig.postConfirmationLambdaArn}`: "";
+            `PostConfirmation: "${lambdaConfig.postConfirmationLambdaArn}"`: "";
 
             parameters.lambdaConfigPreTokenGeneration = lambdaConfig.preTokenGenerationLambdaArn ? 
-            `PreTokenGeneration: ${lambdaConfig.preTokenGenerationLambdaArn}`: "";
+            `PreTokenGeneration: "${lambdaConfig.preTokenGenerationLambdaArn}"`: "";
         }
     }
 }
