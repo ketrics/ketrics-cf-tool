@@ -5,14 +5,14 @@ Resources:
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: "/aws/lambda/${stackName}-${functionName}"
+      LogGroupName: "/aws/lambda/${stackName}"
       RetentionInDays: 7
 
   IamRoleLambdaExecution:
     Type: AWS::IAM::Role
     Properties:
       Path: "/"
-      RoleName: "${stackName}-${functionName}-LambdaRole"
+      RoleName: "${stackName}-LambdaRole"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -23,7 +23,7 @@ Resources:
             Action:
               - sts:AssumeRole
       Policies:
-        - PolicyName: "${stackName}-${functionName}-LambdaPolicy"
+        - PolicyName: "${stackName}-LambdaPolicy"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:

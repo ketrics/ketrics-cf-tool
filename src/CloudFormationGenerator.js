@@ -22,14 +22,6 @@ module.exports.CloudFormationGenerator = class {
         this.projectParametersFilename = projectParametersFilename || defaults.projectParametersFilename;
     }
 
-    get stackTemplateFilename(){
-        return path.join('./build', `${this.stackName}.yml`);
-    }
-
-    get stackTemplateBucketKey(){
-        return `${this.stackName}/${this.stackName}.yml`;
-    }
-
     loadJsonFile(filename){
         try{
             return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -112,8 +104,7 @@ module.exports.CloudFormationGenerator = class {
                 Key: bucketKey
             };
             const data = await s3.upload(params).promise();
-            console.log("File uploaded:");
-            console.log(data);
+            console.log("File uploaded:", data);
             return data;
         }catch(err){
             throw err;
@@ -135,11 +126,12 @@ module.exports.CloudFormationGenerator = class {
 
     async uploadStackTemplateToDeploymentBucket(){
         try{
-            console.log("Uploading Stack Template");
-            const data = await this.uploadFileToDeploymentBucket({
-                filename: this.stackTemplateFilename,
-                bucketKey: this.stackTemplateBucketKey
-            });
+            const params = {
+                filename: this.parameters.stackTemplateFilename,
+                bucketKey: this.parameters.stackTemplateBucketKey
+            };
+            console.log(`Uploading Stack Template:`, params);
+            const data = await this.uploadFileToDeploymentBucket(params);
             this.templateUrl = data.Location;
         }catch(err){
             console.log(err);
@@ -174,6 +166,7 @@ module.exports.CloudFormationGenerator = class {
             let data;
             if(stack){
                 params.Tags = [
+                    ...stack.Tags,
                     {
                         Key: 'updatedBy',
                         Value: 'ketrics-cf'
@@ -183,7 +176,7 @@ module.exports.CloudFormationGenerator = class {
                         Value: d.toISOString()
                     }, 
                 ];
-                console.log(`Updating stack ${this.stackName}`);
+                console.log(`Updating stack ${this.stackName}`, params);
                 data = await cloudformation.updateStack(params).promise();
                 console.log(data);
 
@@ -201,7 +194,7 @@ module.exports.CloudFormationGenerator = class {
                         Value: d.toISOString()
                     }, 
                 ];
-                console.log(`Creating stack ${this.stackName}`);
+                console.log(`Creating stack ${this.stackName}`, params);
                 data = await cloudformation.createStack(params).promise();
                 console.log(data);
 
@@ -233,14 +226,14 @@ module.exports.CloudFormationGenerator = class {
     updateProjectStackParameters(newStackInfo){
         let projectParameters = this.loadJsonFile(this.projectParametersFilename);
         projectParameters.stacks = projectParameters.stacks || {};
-        let currentStackInfo = projectParameters.stacks[this.stackName] || {};
+        let currentStackInfo = projectParameters.stacks[this.stackFolder] || {};
         if(newStackInfo){
-            projectParameters.stacks[this.stackName] = {
+            projectParameters.stacks[this.stackFolder] = {
                 ...currentStackInfo,
                 ...newStackInfo
             };
         }else{
-            delete projectParameters.stacks[this.stackName];
+            delete projectParameters.stacks[this.stackFolder];
         }
 
         fs.writeFileSync(this.projectParametersFilename, JSON.stringify(projectParameters, null, 4));
@@ -257,8 +250,7 @@ module.exports.CloudFormationGenerator = class {
                 const cloudformation = new AWS.CloudFormation();
                 console.log(`Deleting stack ${this.stackName}`);
                 const data = await cloudformation.deleteStack(params).promise();
-                console.log(data);                
-                return data;
+                console.log(data);
             }catch(err){
                 console.log(err);
                 throw err;
@@ -275,8 +267,8 @@ module.exports.CloudFormationGenerator = class {
         const paramKeys = {
             "-t": "template",
             "-template": "template",
-            "-s": "stackName",
-            "-stack": "stackName"
+            "-s": "stackFolder",
+            "-stack": "stackFolder"
         }
 
         let parameters = args
@@ -306,27 +298,31 @@ module.exports.CloudFormationGenerator = class {
         const {cmd, script, args, argvs} = this.loadArgs();
 
         if(cmd==='run'){
-            this.stackName = args.stackName;
-            this.loadStackParameters();
-            const {AwsRegion, stackType} = this.parameters;
+            this.loadStackParameters(args.stackFolder);
+            const {stackType} = this.parameters;
             // Set the region
-            AWS.config.update({region: AwsRegion});
+            AWS.config.update({region: this.parameters["AWS::Region"]});
             
             if(script==="build"){
                 console.log(util.inspect(this.parameters, {showHidden: false, depth: null}));
                 await this.processStack();
-            }if(script==="test"){
+            }else if(script==="test"){
                 console.log(util.inspect({cmd, script, args, argvs, parameters: this.parameters}, {showHidden: false, depth: null}));
-            }if(script==="describe"){
-                this.getStack();
-            }else {
+            }else if(script==="describe"){
+                const stackInfo = await this.getStack();
+                console.log("stackInfo");
+                console.log(stackInfo);
+            }else if(script==="upload"){
+                // Upload Stack template to Project Bucket
+                await this.uploadStackTemplateToDeploymentBucket();
+            }else {                
+                // Creates Project Bucket to upload Stacks files
+                await this.createProjectDeploymentBucket();
+
                 // Gets the Stack if it is already deployed
                 const stack = await this.getStack();
 
                 if(script==="deploy"){
-                    // Creates Project Bucket to upload Stacks files
-                    await this.createProjectDeploymentBucket();
-
                     // Create the Stack template replacing the parameters and files
                     await this.processStack();
 
@@ -350,20 +346,22 @@ module.exports.CloudFormationGenerator = class {
                     }else{
                         this.createStackFromTemplate(template);
                     }
+                }else{
+                    console.log(`Unhandled script ${script}`);
                 }
             }
         }
     }
 
     createStackFromTemplate(template){
-        if(this.stackName && template){
+        if(this.stackFolder && template){
             const source = `${this.templatePath}/${template}`;
-            const target = `./stacks/${this.stackName}`;
+            const target = `./stacks/${this.stackFolder}`;
     
             if ( fs.existsSync( target ) ) {
-                console.log(`There is already a Stack named: ${this.stackName}`);
+                console.log(`There is already a Stack named: ${this.stackFolder}`);
             }else{
-                console.log(`Creating Stack: ${this.stackName} from template ${template}`);
+                console.log(`Creating Stack: ${this.stackFolder} from template ${template}`);
                 this.copyFolderRecursiveSync(source, target);
             }
         }else{
@@ -416,7 +414,7 @@ module.exports.CloudFormationGenerator = class {
 
             output.on('close',()=>{
                 console.log(archive.pointer() + ' total bytes');
-                console.log(`Zip file created: ${this.parameters.lambdaCodeFilename}`);
+                console.log(`Lambda Zip file created:`, {filename: this.parameters.lambdaCodeFilename});
                 resolve(this.parameters.lambdaCodeFilename);
             });
             
@@ -425,52 +423,54 @@ module.exports.CloudFormationGenerator = class {
             });
             
             archive.pipe(output);
-            archive.directory(`./stacks/${this.stackName}`, false);
+            archive.directory(`./stacks/${this.stackFolder}`, false);
             archive.finalize();
         });
     }
 
-    loadStackParameters(){
-        const stackParameters = this.loadJsonFile(`./stacks/${this.stackName}/parameters.json`);
-        const projectParameters = this.updateProjectStackParameters({parameters: stackParameters});
+    loadStackParameters(stackFolder){
+        this.stackFolder = stackFolder;
 
+        const stackParameters = this.loadJsonFile(`./stacks/${stackFolder}/parameters.json`);
+        const projectParameters = this.updateProjectStackParameters({parameters: stackParameters});
+        this.stackName = `${projectParameters.projectName}-${stackFolder}`;
+        
         this.parameters = {
             ...projectParameters,
             ...stackParameters,
             stackName: this.stackName,
+            stackFolder: this.stackFolder,
+            stackTemplateFilename: path.join('./build', `${this.stackName}.yml`),
+            stackTemplateBucketKey: `${this.stackFolder}/${this.stackName}.yml`,
             projectDeploymentBucketName: `${projectParameters.projectName.toLowerCase()}-deploymentbucket`
         }
 
         // Cognito Parameters
-        Cognito.loadParameters(this.parameters);
+        if(this.parameters.stackType==="AWS_COGNITO")
+            Cognito.loadParameters(this.parameters);
         
         // Lambda Parameters
-        Lambda.loadParameters(this.parameters);
+        if(this.parameters.stackType==="AWS_LAMBDA")
+            Lambda.loadParameters(this.parameters);
     }
 
     async processStack(template="template.yml"){   
-        console.log("Creating Stack Template file");
         const {stackType} = this.parameters;     
-        const tplFilename = `./stacks/${this.stackName}/${template}`;
+        const tplFilename = `./stacks/${this.stackFolder}/${template}`;
+        console.log("Processing Stack Template file:", {filename: tplFilename});
         let templateContent = fs.readFileSync(tplFilename, 'utf8');
         templateContent = this.replaceFiles(templateContent);
         templateContent = this.replaceParameters(templateContent);
-        this.createOutput(templateContent, this.stackTemplateFilename);
+        
+        // Create Stack Template Output
+        fs.writeFileSync(this.parameters.stackTemplateFilename, templateContent);
+        console.log("The Stack Template was saved:",{filename: this.parameters.stackTemplateFilename});
 
         // If the Stack is an AWS_LAMBDA then zip the files and upload it to the Project Bucket
         if(stackType==="AWS_LAMBDA"){
             // Create Zip file with Lambda code
             await this.createLambdaZip();
         }
-    }
-
-    createOutput(template, output){
-        fs.writeFile(output, template, err => {
-            if(err) {
-                return console.log(err);
-            }
-            console.log("The file was saved: " + output);
-        }); 
     }
 
     replaceParameters(template){
