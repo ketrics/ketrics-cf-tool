@@ -1,3 +1,4 @@
 {
-    "graphQlApiName": "GraphQlApi"
+    "graphQlApiName": "GraphQlApi",
+    "userPoolId": "${stacks.Cognito.outputs.UserPoolId}"
 }

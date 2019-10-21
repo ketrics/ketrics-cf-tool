@@ -9,17 +9,25 @@ Resources:
       AuthenticationType: "AMAZON_COGNITO_USER_POOLS"
       UserPoolConfig:
         UserPoolId: "${userPoolId}"
-        AwsRegion: "${AwsRegion}"
+        AwsRegion: "${AWS::Region}"
         DefaultAction: "ALLOW"
 
   GraphQLSchema:
       Type: AWS::AppSync::GraphQLSchema
       Properties:
         ApiId: !GetAtt [GraphQLApi, ApiId]
-        Definition: "${file(./stacks/${stackName}/schema.graphql)}"
+        Definition: "${file(./stacks/${stackFolder}/schema.graphql)}"
 
 
 Outputs:
+  GraphQLApiId:
+    Description: GraphQLApi Id
+    Value: !GetAtt [ GraphQLApi, ApiId ]
+
+  GraphQLApiArn:
+    Description: GraphQLApi Arn
+    Value: !GetAtt [ GraphQLApi, Arn ]
+
   GraphQLApiUrl:
     Description: GraphQLApi URL
     Value: !GetAtt [ GraphQLApi, GraphQLUrl ]

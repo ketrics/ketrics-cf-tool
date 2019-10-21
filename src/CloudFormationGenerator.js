@@ -15,6 +15,9 @@ const defaults = {
     projectParametersFilename: './stacks/parameters.json'
 }
 
+const fileVariableSyntax = RegExp(/\${file\((.*?)\)/g);
+const variableSyntax = RegExp(/\${(.*?)}/g);
+
 module.exports.CloudFormationGenerator = class {
 
     constructor(templatePath, projectParametersFilename){
@@ -465,9 +468,9 @@ module.exports.CloudFormationGenerator = class {
         const tplFilename = `./stacks/${this.stackFolder}/${template}`;
         console.log("Processing Stack Template file:", {filename: tplFilename});
         let templateContent = fs.readFileSync(tplFilename, 'utf8');
-        templateContent = this.replaceFiles(templateContent);
         templateContent = this.replaceVariables(templateContent, this.parameters);
-        
+        templateContent = this.replaceFiles(templateContent);
+
         // Create Stack Template Output
         fs.writeFileSync(this.parameters.stackTemplateFilename, templateContent);
         console.log("The Stack Template was saved:",{filename: this.parameters.stackTemplateFilename});
@@ -480,7 +483,7 @@ module.exports.CloudFormationGenerator = class {
     }
 
     replaceVariables(template, variables){
-        const variableSyntax = RegExp(/\${(.*?)}/g);
+        template = template.replace(new RegExp(/\${file\(/g), '$[file(');
         const flattenVariables = flatten(variables);
         const configVariables = Object.keys(flattenVariables);
         const templateVariables = [];
@@ -489,6 +492,7 @@ module.exports.CloudFormationGenerator = class {
         while ((searchResult = variableSyntax.exec(template)) !== null) {
           templateVariables.push(searchResult[1]);
         }
+        console.log(templateVariables);
 
         const substitutions = configVariables
             .filter(value => templateVariables.indexOf(value) > -1)
@@ -509,11 +513,13 @@ module.exports.CloudFormationGenerator = class {
                 templateJoin[i] = substitutions[templateJoin[i]];
             }
         }
-        return templateJoin.join('');
+        template = templateJoin.join('');
+        template = template.replace(new RegExp(/\$\[file\(/g), '${file(');
+        return template;
     }
 
     replaceFiles(template){
-        const fileVariableSyntax = RegExp(/\${file\((.*?)\)/g);
+        
         const fileTemplateVariables = [];
         let searchResult;
         // eslint-disable-next-line no-cond-assign

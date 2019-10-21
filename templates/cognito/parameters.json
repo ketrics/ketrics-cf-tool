@@ -8,7 +8,7 @@
         "requireUppercase": true
     },
     "lambdaConfig": {
-        "postConfirmationLambdaArn": "Hello",
-        "preTokenGenerationLambdaArn": null
+        "postConfirmationLambdaArn": "${stacks.PostConfirmation.outputs.LambdaFunctionArn}",
+        "preTokenGenerationLambdaArn": "${stacks.PreTokenGeneration.outputs.LambdaFunctionArn}"
     }
 }

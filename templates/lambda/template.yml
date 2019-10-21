@@ -43,7 +43,7 @@ Resources:
         S3Bucket: "${projectDeploymentBucketName}"
         S3Key: "${lambdaCodeBucketKey}"
       FunctionName: "${functionName}"
-      Handler: handler.${functionName}
+      Handler: handler.${handlerName}
       MemorySize: ${memorySize}
       Role: !GetAtt [IamRoleLambdaExecution, Arn]
       Runtime: ${runtime}

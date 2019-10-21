@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: The AWS CloudFormation template for this Serverless application
 
 Resources:
-  CognitoUsersBucket:
+  UsersBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: ${cognitoUsersBucketName}
@@ -11,13 +11,13 @@ Resources:
         - ServerSideEncryptionByDefault:
             SSEAlgorithm: AES256
 
-  CognitoUserPool:
+  UserPool:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: ${stackName}-UserPool
       LambdaConfig:
-        ${lambdaConfigPostConfirmation}
-        ${lambdaConfigPreTokenGeneration}
+        PostConfirmation: "${lambdaConfig.postConfirmationLambdaArn}"
+        PreTokenGeneration: "${lambdaConfig.preTokenGenerationLambdaArn}"
       AutoVerifiedAttributes:
         - email
       UsernameAttributes:
@@ -31,13 +31,29 @@ Resources:
           RequireUppercase: ${passwordPolicy.requireUppercase}
     UpdateReplacePolicy: Retain
 
+  PostConfirmationLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: "${lambdaConfig.postConfirmationLambdaArn}"
+      Action: lambda:InvokeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt [UserPool, Arn]
+
+  PreTokenGenerationLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: "${lambdaConfig.preTokenGenerationLambdaArn}"
+      Action: lambda:InvokeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt [UserPool, Arn]
+
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
       ClientName: ${stackName}-UserPoolClient
       RefreshTokenValidity: 30
       GenerateSecret: false
-      UserPoolId: !Ref CognitoUserPool
+      UserPoolId: !Ref UserPool
 
   IdentityPool:
     Type: AWS::Cognito::IdentityPool
@@ -46,9 +62,9 @@ Resources:
       AllowUnauthenticatedIdentities: false
       CognitoIdentityProviders:
         - ClientId: !Ref UserPoolClient
-          ProviderName: !GetAtt [CognitoUserPool, ProviderName]
+          ProviderName: !GetAtt [UserPool, ProviderName]
 
-  CognitoIdentityPoolRoles:
+  IdentityPoolRoles:
     Type: AWS::Cognito::IdentityPoolRoleAttachment
     Properties:
       IdentityPoolId: !Ref IdentityPool
@@ -126,13 +142,19 @@ Resources:
 
 Outputs:  
   UserPoolId:
-    Value: !Ref CognitoUserPool
+    Value: !Ref UserPool
 
   UserPoolArn:
-    Value: !GetAtt [CognitoUserPool, Arn]
+    Value: !GetAtt [UserPool, Arn]
 
   UserPoolClientId:
     Value: !Ref UserPoolClient
 
   IdentityPoolId:
     Value: !Ref IdentityPool
+
+  UsersBucketArn:
+    Value: !GetAtt [UsersBucket, Arn]
+
+  UsersBucketName:
+    Value: !Ref UsersBucket
