@@ -492,7 +492,6 @@ module.exports.CloudFormationGenerator = class {
         while ((searchResult = variableSyntax.exec(template)) !== null) {
           templateVariables.push(searchResult[1]);
         }
-        console.log(templateVariables);
 
         const substitutions = configVariables
             .filter(value => templateVariables.indexOf(value) > -1)
