@@ -1,7 +1,6 @@
 module.exports.Cognito = class {
     static loadParameters(parameters){
-        const {stackName, lambdaConfig} = parameters;
-        parameters.cognitoUsersBucketName = `${stackName.toLowerCase()}-usersbucket`;
+        const {lambdaConfig} = parameters;
 
         if(lambdaConfig){
             parameters.lambdaConfigPostConfirmation = lambdaConfig.postConfirmationLambdaArn ? 

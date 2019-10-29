@@ -30,11 +30,11 @@ Resources:
               - Effect: Allow
                 Action:
                   - logs:CreateLogStream
-                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${stackName}-${functionName}*:*"
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${stackName}*:*"
               - Effect: Allow
                 Action:
                   - logs:PutLogEvents
-                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${stackName}-${functionName}*:*:*"
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${stackName}*:*:*"
       
   LambdaFunction:
     Type: AWS::Lambda::Function

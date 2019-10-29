@@ -1,9 +1,8 @@
 module.exports.Lambda = class {
     static loadParameters(parameters){
-        const {stackFolder, stackName} = parameters;
-        const functionName = stackName;
+        const {stackFolder, stackName, functionName} = parameters;
 
-        parameters.functionName = functionName;
+        parameters.functionName = functionName || stackName;;
         parameters.lambdaCodeBucketKey = `${stackFolder}/${stackName}.zip`;
         parameters.lambdaCodeFilename = `./build/${stackName}.zip`;
         

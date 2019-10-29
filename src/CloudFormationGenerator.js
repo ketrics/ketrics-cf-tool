@@ -5,10 +5,13 @@ const archiver = require('archiver');
 const AWS = require('aws-sdk');
 const flatten = require('flat');
 const util = require('util')
-
 // Custom Resources Handlers
 const {Cognito} = require('./Cognito.class');
 const {Lambda} = require('./Lambda.class');
+
+// Set the API version globally
+AWS.config.update({region: 'us-east-1'});
+AWS.config.apiVersions = {s3: '2006-03-01'};
 
 const defaults = {
     templatePath: './node_modules/ketrics-cf/templates',
@@ -48,7 +51,7 @@ module.exports.CloudFormationGenerator = class {
         const {projectDeploymentBucketName} = this.parameters;
         try{
             // Create S3 service object
-            const s3 = new AWS.S3({apiVersion: '2006-03-01'});
+            const s3 = new AWS.S3();
             const {Buckets} = await s3.listBuckets().promise();
             const index = Buckets.findIndex(bucket=>{
                 return bucket.Name == projectDeploymentBucketName;
@@ -91,7 +94,7 @@ module.exports.CloudFormationGenerator = class {
             const fileContent = fs.readFileSync(filename);
             
             // call S3 to retrieve upload file to specified bucket
-            const s3 = new AWS.S3({apiVersion: '2006-03-01'});
+            const s3 = new AWS.S3();
             const params = {
                 Bucket: projectDeploymentBucketName,
                 Body: fileContent,
@@ -196,6 +199,17 @@ module.exports.CloudFormationGenerator = class {
                 params = {StackName: this.stackName};
                 await cloudformation.waitFor('stackCreateComplete', params).promise();
             }
+            const stackInfo = await this.syncStack();
+            console.log(stackInfo);
+            return data;
+        }catch(err){
+            console.log(err);
+            throw err;
+        }
+    }
+
+    async syncStack(){
+        try{
             const response = await this.getStack();
             const stackInfo = {
                 stackName: response.StackName,
@@ -207,31 +221,55 @@ module.exports.CloudFormationGenerator = class {
                 }, {}),
                 stackStatus: response.StackStatus
             };
-            console.log(stackInfo);
-            this.updateProjectStackParameters(stackInfo);
-            
-            return data;
+            this.updateStackParameters(stackInfo);
+            return stackInfo;
         }catch(err){
-            console.log(err);
             throw err;
         }
     }
 
-    updateProjectStackParameters(newStackInfo){
-        let projectParameters = this.loadJsonFile(this.projectParametersFilename);
-        projectParameters.stacks = projectParameters.stacks || {};
-        let currentStackInfo = projectParameters.stacks[this.stackFolder] || {};
+    updateStackParameters(newStackInfo){
+        let buildParameters = this.loadJsonFile("build/parameters.json");
+        buildParameters.stacks = buildParameters.stacks || {};
+        let currentStackInfo = buildParameters.stacks[this.stackFolder] || {};
         if(newStackInfo){
-            projectParameters.stacks[this.stackFolder] = {
+            buildParameters.stacks[this.stackFolder] = {
                 ...currentStackInfo,
                 ...newStackInfo
             };
         }else{
-            delete projectParameters.stacks[this.stackFolder];
+            delete buildParameters.stacks[this.stackFolder];
         }
 
-        fs.writeFileSync(this.projectParametersFilename, JSON.stringify(projectParameters, null, 4));
-        return projectParameters;
+        fs.writeFileSync("build/parameters.json", JSON.stringify(buildParameters, null, 4));
+        return buildParameters;
+    }
+
+    updateProjectParameters(projectParameters){
+        let buildParameters = this.loadJsonFile("build/parameters.json");
+        buildParameters = {
+            ...buildParameters,
+            ...projectParameters
+        }
+        fs.writeFileSync("build/parameters.json", JSON.stringify(buildParameters, null, 4));
+        return buildParameters;
+    }
+
+    async updateLambdaCode(){
+        try{
+            const lambda = new AWS.Lambda();
+            const params = {
+                FunctionName: this.parameters.functionName, 
+                Publish: true, 
+                S3Bucket: this.parameters.projectDeploymentBucketName, 
+                S3Key: this.parameters.lambdaCodeBucketKey 
+            };
+
+            const response = await lambda.updateFunctionCode(params).promise();
+            console.log(response);
+        }catch(err){
+            throw err;
+        }
     }
 
     async deleteStack(stack){
@@ -252,7 +290,7 @@ module.exports.CloudFormationGenerator = class {
         }else{
             console.log(`The stack ${this.stackName} doesn't exist`);
         }
-        this.updateProjectStackParameters(null);
+        this.updateStackParameters(null);
     }
 
     loadArgs(){
@@ -309,6 +347,19 @@ module.exports.CloudFormationGenerator = class {
             }else if(script==="upload"){
                 // Upload Stack template to Project Bucket
                 await this.uploadStackTemplateToDeploymentBucket();
+            }else if(script==="sync"){
+                // Upload Stack template to Project Bucket
+                const stackInfo = await this.syncStack();
+                console.log(stackInfo);
+            }else if(script==="update-code"){
+                // Create the Stack template replacing the parameters and files
+                await this.processStack();
+
+                // Upload Lambda code to Project Bucket
+                if(stackType==="AWS_LAMBDA"){
+                    await this.uploadLambdaToDeploymentBucket();
+                    await this.updateLambdaCode();
+                }
             }else {                
                 // Creates Project Bucket to upload Stacks files
                 await this.createProjectDeploymentBucket();
@@ -439,19 +490,25 @@ module.exports.CloudFormationGenerator = class {
         this.stackFolder = stackFolder;
         // Load Project Parameters to replace into Stack Parameters before loading them
         let projectParameters = this.loadJsonFile(this.projectParametersFilename);
-        const stackParameters = this.loadJsonFile(`./stacks/${stackFolder}/parameters.json`, projectParameters);
-        
-        projectParameters = this.updateProjectStackParameters({parameters: stackParameters});
-        this.stackName = `${projectParameters.projectName}-${stackFolder}`;
+        // Save Project parameters
+        let buildParameters = this.updateProjectParameters(projectParameters);
+
+        // Load stack parameters replacing project parameters if founded
+        const stackParameters = this.loadJsonFile(`./stacks/${stackFolder}/parameters.json`, buildParameters);
+        // Save stack parameters and get buildParameters
+        buildParameters = this.updateStackParameters({parameters: stackParameters});
+
+        // Create stack name with the projectName
+        this.stackName = `${buildParameters.projectName}-${stackFolder}`;
         
         this.parameters = {
-            ...projectParameters,
+            ...buildParameters,
             ...stackParameters,
             stackName: this.stackName,
             stackFolder: this.stackFolder,
             stackTemplateFilename: path.join('./build', `${this.stackName}.yml`),
             stackTemplateBucketKey: `${this.stackFolder}/${this.stackName}.yml`,
-            projectDeploymentBucketName: `${projectParameters.projectName.toLowerCase()}-deploymentbucket`
+            projectDeploymentBucketName: `${buildParameters.projectName.toLowerCase()}-deploymentbucket`
         }
 
         // Cognito Parameters
